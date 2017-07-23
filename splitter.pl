@@ -22,7 +22,8 @@ my $s3 = Net::Amazon::S3->new({
   host                  => 's3-eu-west-1.amazonaws.com',
 });
 
-my $bucket = $s3->bucket($bucketname);
+my $s3client = Net::Amazon::S3::Client->new( s3 => $s3 );
+my $bucket = $s3client->bucket( name => $bucketname );
 
 use constant {
   INFO => "INFO",
@@ -72,7 +73,8 @@ sub process_file {
   close($fh);
   my $s3filename = sprintf $template, $c++;
   logger(INFO,"Flushing file %s of %d to S3 file %s",$filename,$filesize,$s3filename);
-  $bucket->add_key_filename( $s3filename, $filename ) or die $s3->err . ": " . $s3->errstr;
+  my $object = $bucket->object( key => $s3filename );
+  $object->put_filename( $filename );
   unlink $filename;
 }
 
