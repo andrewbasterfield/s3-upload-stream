@@ -1,14 +1,28 @@
-#!/usr/bin/perl
+#!/usr/bin/env perl
 
-my $max_blocksize = 4096;
-my $max_filesize = 4096*3;
+my $max_filesize = $ENV{MAX_FILESIZE};
+my $max_blocksize = $ENV{MAX_BLOCKSIZE};
+my $bucketname = $ENV{BUCKETNAME};
+my $template = $ENV{TEMPLATE};
 
+use Net::Amazon::S3;
 use strict;
 use warnings;
 use File::Temp;
+use LWP::Protocol::https;
 
 $SIG{__DIE__} = \&Carp::confess;
 $SIG{__WARN__} = \&Carp::cluck;
+
+my $s3 = Net::Amazon::S3->new({
+  aws_access_key_id     => $ENV{'AWS_ACCESS_KEY_ID'},
+  aws_secret_access_key => $ENV{'AWS_ACCESS_KEY_SECRET'},
+  retry                 => 1,
+  secure                => 1,
+  host                  => 's3-eu-west-1.amazonaws.com',
+});
+
+my $bucket = $s3->bucket($bucketname);
 
 use constant {
   INFO => "INFO",
@@ -27,7 +41,7 @@ while ($this_blocksize = read(STDIN,$block,$max_blocksize)) {
   logger(INFO, "Read %d",$this_blocksize);
   logger(WARN, "Got error: %s", $!) if $!;
   
-  if ($this_blocksize > 0 && ($this_filesize + $this_blocksize <= $max_filesize)) {
+  if ($this_filesize + $this_blocksize <= $max_filesize) {
     #
     # Append to file
     #
@@ -50,13 +64,16 @@ sub getfh {
   return ($fh,$filename);
 }
 
+my $c = 0;
 sub process_file {
   my $fh = shift;
   my $filename = shift;
   my $filesize = shift;
   close($fh);
+  my $s3filename = sprintf $template, $c++;
+  logger(INFO,"Flushing file %s of %d to S3 file %s",$filename,$filesize,$s3filename);
+  $bucket->add_key_filename( $s3filename, $filename ) or die $s3->err . ": " . $s3->errstr;
   unlink $filename;
-  logger(INFO,"Flushing file %s of %d",$filename,$filesize);
 }
 
 sub logger {
