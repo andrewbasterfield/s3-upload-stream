@@ -4,6 +4,7 @@ my $max_filesize = $ENV{MAX_FILESIZE};
 my $max_blocksize = $ENV{MAX_BLOCKSIZE};
 my $bucketname = $ENV{BUCKETNAME};
 my $template = $ENV{TEMPLATE};
+my $skip = 0;
 
 use Net::Amazon::S3;
 use strict;
@@ -72,9 +73,13 @@ sub process_file {
   my $filesize = shift;
   close($fh);
   my $s3filename = sprintf $template, $c++;
-  logger(INFO,"Flushing file %s of %d to S3 file %s",$filename,$filesize,$s3filename);
-  my $object = $bucket->object( key => $s3filename );
-  $object->put_filename( $filename );
+  if ($c > $skip) {
+    logger(INFO,"Flushing file %s of %d to S3 file %s",$filename,$filesize,$s3filename);
+    my $object = $bucket->object( key => $s3filename );
+    $object->put_filename( $filename );
+  } else {
+    logger(INFO,"Skipping file %s of %d to S3 file %s",$filename,$filesize,$s3filename);
+  }
   unlink $filename;
 }
 
