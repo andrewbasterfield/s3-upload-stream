@@ -72,13 +72,13 @@ sub process_file {
   my $filename = shift;
   my $filesize = shift;
   close($fh);
-  my $s3filename = sprintf $template, $c++;
-  if ($c > $skip) {
+  if ($c++ > $skip) {
+    my $s3filename = sprintf $template, $c;
     logger(INFO,"Flushing file %s of %d to S3 file %s",$filename,$filesize,$s3filename);
     my $object = $bucket->object( key => $s3filename );
     $object->put_filename( $filename );
   } else {
-    logger(INFO,"Skipping file %s of %d to S3 file %s",$filename,$filesize,$s3filename);
+    logger(INFO,"Skipping file %s of %d",$filename,$filesize);
   }
   unlink $filename;
 }
