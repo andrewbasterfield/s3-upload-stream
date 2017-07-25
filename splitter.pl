@@ -1,6 +1,6 @@
 #!/usr/bin/env perl
 
-my $max_filesize = $ENV{MAX_FILESIZE};
+my $max_objsize = $ENV{MAX_FILESIZE};
 my $max_blocksize = $ENV{MAX_BLOCKSIZE};
 my $bucketname = $ENV{BUCKETNAME};
 my $template = $ENV{TEMPLATE};
@@ -32,57 +32,80 @@ use constant {
 };
 
 my $block;
-my $file;
-my $this_filesize = 0;
+my $obj;
+my $this_objsize = 0;
 my $this_blocksize = 0;
 binmode(STDIN);
 
-my ($tmpfh,$filename) = getfh();
-
 my $c = 0;
+my $p;
+my @etags;
+my @pns;
+
+my ($objref,$upload_id) = getobjref();
+
 while ($this_blocksize = read(STDIN,$block,$max_blocksize)) {
   logger(INFO, "Read %d",$this_blocksize);
-  logger(WARN, "Got error: %s", $!) if $!;
+  die $! if $!;
   
-  if ($this_filesize + $this_blocksize <= $max_filesize) {
+  if ($this_objsize + $this_blocksize <= $max_objsize) {
     #
-    # Append to file
+    # Append to obj
     #
-    logger(INFO, "Writing %d to %s",$this_blocksize, $filename);
-    $tmpfh->write($block);
-    $this_filesize += $this_blocksize;
+    write_chunk($objref,$block,$upload_id);
+    $this_objsize += $this_blocksize;
   } else {
     #
-    # Flush the file
+    # Flush the obj
     #
-    process_file($tmpfh,$filename,$this_filesize);
-    ($tmpfh,$filename) = getfh();
-    $this_filesize = 0;
+    complete_obj($objref,$upload_id);
+    ($objref,$upload_id) = getobjref();
+    $this_objsize = 0;
   }
 }
-process_file($tmpfh,$filename,$this_filesize) if $this_filesize;
+complete_obj($objref,$upload_id);
+exit;
 
-sub getfh {
-  my ($fh,$filename) = File::Temp::tempfile();
-  binmode($fh);
-  return ($fh,$filename);
+sub getobjref {
+  my $objname = sprintf $template, $c++;
+  logger(INFO,"Getting S3 object ref %s",$objname);
+  my $object = $bucket->object( key => $objname );
+  my $upload_id = $object->initiate_multipart_upload;
+  @etags = ();
+  @pns = ();
+  $p = 1;
+  return ($object,$upload_id);
 }
 
-sub process_file {
-  my $fh = shift;
-  my $filename = shift;
-  my $filesize = shift;
-  close($fh);
-  if ($c > $skip) {
-    my $s3filename = sprintf $template, $c;
-    logger(INFO,"Flushing file %s of %d to S3 file %s",$filename,$filesize,$s3filename);
-    my $object = $bucket->object( key => $s3filename );
-    $object->put_filename( $filename );
-  } else {
-    logger(INFO,"Skipping file %s of size %d index %d [to skip %d]",$filename,$filesize,$c,$skip);
-  }
-  $c++;
-  unlink $filename;
+sub write_chunk {
+  my $obj = shift;
+  my $data = shift;
+  my $upload_id = shift;
+
+  logger(INFO,"Uploading a chunk to S3");
+
+  my $put_part_response = $obj->put_part(
+    upload_id   => $upload_id,
+    part_number => $p,
+    value       => $data
+  );
+
+  push @etags, $put_part_response->header('ETag');
+  push @pns, $p;
+  $p++;
+}
+
+sub complete_obj {
+  my $obj = shift;
+  my $upload_id = shift;
+
+  logger(INFO,"Completing S3 object");
+
+  $obj->complete_multipart_upload(
+    upload_id    => $upload_id,
+    etags        => \@etags,
+    part_numbers => \@pns,
+  );
 }
 
 sub logger {
