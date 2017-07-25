@@ -1,15 +1,32 @@
 #!/usr/bin/env perl
 
+use strict;
+use warnings;
+
+package Logger;
+
+use constant {
+  INFO => "INFO",
+  WARN => "WARN",
+};
+
+sub logger {
+  my $level = shift;
+  my $format_string = shift;
+  my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst)=localtime(time);
+  my $line = sprintf($format_string, @_);
+  printf "%4d-%02d-%02d %02d:%02d:%02d (%d) %s: %s\n",$year+1900,$mon+1,$mday,$hour,$min,$sec,$$,$level,$line;
+}
+
+package S3Backup;
+
 my $max_objsize = $ENV{MAX_FILESIZE};
 my $max_blocksize = $ENV{MAX_BLOCKSIZE};
 my $bucketname = $ENV{BUCKETNAME};
 my $template = $ENV{TEMPLATE};
-my $skip = 0;
+my $skip = 0; # Highest seen ID sucessfully uploaded, next file will be skip+1
 
 use Net::Amazon::S3;
-use strict;
-use warnings;
-use File::Temp;
 use LWP::Protocol::https;
 
 $SIG{__DIE__} = \&Carp::confess;
@@ -26,92 +43,94 @@ my $s3 = Net::Amazon::S3->new({
 my $s3client = Net::Amazon::S3::Client->new( s3 => $s3 );
 my $bucket = $s3client->bucket( name => $bucketname );
 
-use constant {
-  INFO => "INFO",
-  WARN => "WARN",
-};
-
 my $block;
-my $obj;
-my $this_objsize = 0;
 my $this_blocksize = 0;
 binmode(STDIN);
 
 my $c = 0;
-my $p;
-my @etags;
-my @pns;
 
-my ($objref,$upload_id) = getobjref();
+my $objref = S3ObjWrapper->new($bucket,($skip >= $c),$template,$c++);
 
 while ($this_blocksize = read(STDIN,$block,$max_blocksize)) {
-  logger(INFO, "Read %d",$this_blocksize);
+  Logger::logger(Logger::INFO, "Read %d",$this_blocksize);
   die $! if $!;
   
-  if ($this_objsize + $this_blocksize <= $max_objsize) {
+  if ($objref->size() + $this_blocksize <= $max_objsize) {
     #
     # Append to obj
     #
-    write_chunk($objref,$block,$upload_id);
-    $this_objsize += $this_blocksize;
+    $objref->write_chunk($block,$this_blocksize);
   } else {
     #
     # Flush the obj
     #
-    complete_obj($objref,$upload_id);
-    ($objref,$upload_id) = getobjref();
-    $this_objsize = 0;
+    $objref->complete_obj;
+    $objref = S3ObjWrapper->new($bucket,($skip >= $c),$template,$c++);
   }
 }
-complete_obj($objref,$upload_id);
+$objref->complete_obj;
 exit;
 
-sub getobjref {
-  my $objname = sprintf $template, $c++;
-  logger(INFO,"Getting S3 object ref %s",$objname);
-  my $object = $bucket->object( key => $objname );
-  my $upload_id = $object->initiate_multipart_upload;
-  @etags = ();
-  @pns = ();
-  $p = 1;
-  return ($object,$upload_id);
+package S3ObjWrapper;
+
+sub new {
+  my $class = shift;
+  my $bucket = shift;
+  my $skip = shift;
+  my $template = shift;
+  my @template_args = @_;
+  my $self = {};
+  bless $self, $class;
+
+  $self->{'name'} = sprintf $template, @template_args;
+  $self->{'skip'} = $skip;
+  if ($skip) {
+    Logger::logger(Logger::INFO,"Skipping S3 object ref %s",$self->{'name'});
+  } else {
+    Logger::logger(Logger::INFO,"Getting S3 object ref %s",$self->{'name'});
+    $self->{'object'} = $bucket->object( key => $self->{'name'} );
+    $self->{'upload_id'} = $self->{'object'}->initiate_multipart_upload;
+  }
+  $self->{'etags'} = [];
+  $self->{'parts'} = [];
+  $self->{'part'} = 1;
+  $self->{'size'} = 0;
+  return $self;
+}
+
+sub size {
+  my $self = shift;
+  return $self->{'size'};
 }
 
 sub write_chunk {
-  my $obj = shift;
+  my $self = shift;
   my $data = shift;
-  my $upload_id = shift;
+  my $size = shift;
 
-  logger(INFO,"Uploading a chunk to S3");
-
-  my $put_part_response = $obj->put_part(
-    upload_id   => $upload_id,
-    part_number => $p,
-    value       => $data
-  );
-
-  push @etags, $put_part_response->header('ETag');
-  push @pns, $p;
-  $p++;
+  unless ($self->{'skip'}) {
+    Logger::logger(Logger::INFO,"Uploading part %d of size %s to S3 [uploaded so far %d]",$self->{'part'},$size,$self->{'size'});
+    my $put_part_response = $self->{'object'}->put_part(
+      upload_id   => $self->{'upload_id'},
+      part_number => $self->{'part'},
+      value       => $data
+    );
+    push @{$self->{'etags'}}, $put_part_response->header('ETag');
+    push @{$self->{'parts'}}, $self->{'part'};
+    $self->{'part'}++;
+  }
+  $self->{'size'} += $size;
 }
 
 sub complete_obj {
-  my $obj = shift;
-  my $upload_id = shift;
+  my $self = shift;
 
-  logger(INFO,"Completing S3 object");
-
-  $obj->complete_multipart_upload(
-    upload_id    => $upload_id,
-    etags        => \@etags,
-    part_numbers => \@pns,
-  );
-}
-
-sub logger {
-  my $level = shift;
-  my $format_string = shift;
-  my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst)=localtime(time);
-  my $line = sprintf($format_string, @_);
-  printf "%4d-%02d-%02d %02d:%02d:%02d (%d) %s: %s\n",$year+1900,$mon+1,$mday,$hour,$min,$sec,$$,$level,$line;
+  unless ($self->{'skip'}) {
+    Logger::logger(Logger::INFO,"Completing S3 object of size %d",$self->{'size'});
+    $self->{'object'}->complete_multipart_upload(
+      upload_id    => $self->{'upload_id'},
+      etags        => $self->{'etags'},
+      part_numbers => $self->{'parts'},
+    );
+  }
 }
