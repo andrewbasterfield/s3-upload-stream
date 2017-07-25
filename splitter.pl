@@ -39,6 +39,7 @@ binmode(STDIN);
 
 my ($tmpfh,$filename) = getfh();
 
+my $c = 0;
 while ($this_blocksize = read(STDIN,$block,$max_blocksize)) {
   logger(INFO, "Read %d",$this_blocksize);
   logger(WARN, "Got error: %s", $!) if $!;
@@ -47,6 +48,7 @@ while ($this_blocksize = read(STDIN,$block,$max_blocksize)) {
     #
     # Append to file
     #
+    logger(INFO, "Writing %d to %s",$this_blocksize, $filename);
     $tmpfh->write($block);
     $this_filesize += $this_blocksize;
   } else {
@@ -66,7 +68,6 @@ sub getfh {
   return ($fh,$filename);
 }
 
-my $c = 0;
 sub process_file {
   my $fh = shift;
   my $filename = shift;
