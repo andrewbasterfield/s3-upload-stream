@@ -1,0 +1,41 @@
+Takes a stream of data from STDIN (e.g. a ZFS replication stream from
+'zfs send'), splits it into chunks and uploads each chunk to an S3 bucket
+object (essentially a file). The S3 objects may be much larger than
+available memory as each S3 object is in turn uploaded in smaller chunks of
+an S3 multipart upload.
+
+Eg:
+
+* >1TB ZFS Replication stream
+* 1GB S3 object size
+* 8MB Multipart upload size
+
+This would reult in >1000 S3 objects that can be concatenated together in
+AWS to recreate the ZFS dataset (exercise for the reader). No more than 8MB
+of data is held in memory at any one time.
+
+Should the upload fail part-way through it can be resumed, as long as an
+identical copy of the input stream is still available. The script will
+seek along the stream of data skipping that which has been already uploaded,
+at least to the granularity of complete objects. You have to tell the script
+how many objects worth of data to skip before the uploads are resumed.
+
+$ zfs send -R mysnapshot@dataset | ./s3-upload-stream.pl --bucket zfs-backup
+
+...some kind of incident disrupts the upload after 100 objects uploaded...
+
+$ zfs send -R mysnapshot@dataset | ./s3-upload-stream.pl --bucket zfs-backup --skip 100
+
+If you set the --skip parameter too low an object will be needlessly (but
+harmlessly) overwritten. Too high and you will have a hole in your data.
+
+Usage: ./s3-upload-stream.pl [--help|-h] [--blocksize=<blocksize>] [--objsize=<objsize>] --bucketname=<bucketname> [--template=<template>] [--skip=<skip>]
+  -h  --help                  display this help content
+  -bs --blocksize <blocksize> the size of reads from STDIN and hence the size of the object parts uploaded to S3 [default 8470528] (can be set in environment with S3_MAX_BLOCKSIZE)
+  -os --objsize <objsize>     the size of the objects in S3 [default 1073741824] (can be set in environment with S3_MAX_OBJSIZE)
+  -b  --bucketname <name>     the name of the S3 bucket to upload to  (can be set in environment with S3_BUCKETNAME)
+  -t  --template <template>   filename template (format string) [default upload.%06d] (can be set in environment with S3_OBJ_NAME_TEMPLATE)
+  -s  --skip <N>              skip <N> objects worth of STDIN [default 0]
+  -s3 --s3host <host>         S3 regional host to upload to [default s3-eu-west-1.amazonaws.com] (can be set in environment with S3_HOST)
+Note: set AWS_ACCESS_KEY_ID and AWS_ACCESS_KEY_SECRET in the environment
+
