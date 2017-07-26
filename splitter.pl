@@ -20,24 +20,74 @@ sub logger {
 
 package main;
 
-my $max_objsize = $ENV{MAX_FILESIZE};
-my $max_blocksize = $ENV{MAX_BLOCKSIZE};
-my $bucketname = $ENV{BUCKETNAME};
-my $template = $ENV{TEMPLATE};
-my $skip = 0; # We start uploading at this chunk number
-
 use Net::Amazon::S3;
 use LWP::Protocol::https;
+use Getopt::Long;
 
 $SIG{__DIE__} = \&Carp::confess;
 $SIG{__WARN__} = \&Carp::cluck;
+
+my $max_objsize = $ENV{S3_MAX_OBJSIZE} || 67764224; # 64Mb
+my $max_blocksize = $ENV{S3_MAX_BLOCKSIZE} || 8470528; # 8Mb
+my $bucketname = $ENV{S3_BUCKETNAME};
+my $template = $ENV{S3_OBJ_NAME_TEMPLATE} || "upload.%06d";
+my $skip = 0; # We start uploading at this chunk number
+my $help;
+my $s3host = $ENV{'S3_HOST'} || 's3-eu-west-1.amazonaws.com';
+
+
+Getopt::Long::Configure ("no_ignore_case");
+GetOptions(
+  "help|h"         => \$help,
+  "blocksize|bs=i" => \$max_blocksize,
+  "objsize|os=i"   => \$max_objsize,
+  "bucketname|b=s" => \$bucketname,
+  "template|t=s"   => \$template,
+  "skip|s=s"       => \$skip,
+  "s3host|s3=s"    => \$s3host,
+);
+
+sub usage {
+  my $fh = shift || *STDOUT;
+  print $fh "$0 [--help|-h] [--blocksize=<blocksize>] [--objsize=<objsize>] --bucketname=<bucketname> [--template=<template>] [--skip=<skip>]\n";
+  print $fh "  -h  --help                  display this help content\n";
+  print $fh "  -bs --blocksize <blocksize> the size of reads from STDIN and hence the size of the object parts uploaded to S3 ".(defined $max_blocksize ? "[default $max_blocksize]" : '')." (can be set in environment with S3_MAX_BLOCKSIZE)\n";
+  print $fh "  -os --objsize <objsize>     the size of the objects in S3 ".(defined $max_objsize ? "[default $max_objsize]" : '')." (can be set in environment with S3_MAX_OBJSIZE)\n";
+  print $fh "  -b  --bucketname <name>     the name of the S3 bucket to upload to ".(defined $bucketname ? "[default $bucketname]" : '')." (can be set in environment with S3_BUCKETNAME)\n";
+  print $fh "  -t  --template <template>   filename template (format string) ".(defined $template ? "[default $template]" : '')." (can be set in environment with S3_OBJ_NAME_TEMPLATE)\n";
+  print $fh "  -s  --skip <N>              skip <N> objects worth of STDIN [default $skip]\n";
+  print $fh "  -s3 --s3host <host>         S3 regional host to upload to ".(defined $s3host ? "[default $s3host]" : '')." (can be set in environment with S3_HOST)\n";
+  print $fh "Note: set AWS_ACCESS_KEY_ID and AWS_ACCESS_KEY_SECRET in the environment\n";
+}
+
+if ($help) {
+  usage();
+  exit;
+}
+
+if (!defined $max_objsize) {
+  print STDERR "--bucketname must be set\n";
+  usage(*STDERR);
+  exit 1;
+}
+
+if (!defined $bucketname) {
+  print STDERR "--bucketname must be set\n";
+  usage(*STDERR);
+  exit 1;
+}
+
+if (!defined $ENV{'AWS_ACCESS_KEY_ID'} || !defined $ENV{'AWS_ACCESS_KEY_SECRET'}) {
+  print STDERR "Both AWS_ACCESS_KEY_ID and AWS_ACCESS_KEY_SECRET must be set in environment\n";
+  exit 1;
+}
 
 my $s3 = Net::Amazon::S3->new({
   aws_access_key_id     => $ENV{'AWS_ACCESS_KEY_ID'},
   aws_secret_access_key => $ENV{'AWS_ACCESS_KEY_SECRET'},
   retry                 => 1,
   secure                => 1,
-  host                  => 's3-eu-west-1.amazonaws.com',
+  host                  => $s3host,
 });
 
 my $s3client = Net::Amazon::S3::Client->new( s3 => $s3 );
