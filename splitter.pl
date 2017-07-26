@@ -18,13 +18,13 @@ sub logger {
   printf "%4d-%02d-%02d %02d:%02d:%02d (%d) %s: %s\n",$year+1900,$mon+1,$mday,$hour,$min,$sec,$$,$level,$line;
 }
 
-package S3Backup;
+package main;
 
 my $max_objsize = $ENV{MAX_FILESIZE};
 my $max_blocksize = $ENV{MAX_BLOCKSIZE};
 my $bucketname = $ENV{BUCKETNAME};
 my $template = $ENV{TEMPLATE};
-my $skip = 0; # Highest seen ID sucessfully uploaded, next file will be skip+1
+my $skip = 0; # We start uploading at this chunk number
 
 use Net::Amazon::S3;
 use LWP::Protocol::https;
@@ -49,7 +49,7 @@ binmode(STDIN);
 
 my $c = 0;
 
-my $objref = S3ObjWrapper->new($bucket,($skip >= $c),$template,$c++);
+my $objref = S3ObjWrapper->new($bucket,($skip > $c),$template,$c++);
 
 while ($this_blocksize = read(STDIN,$block,$max_blocksize)) {
   Logger::logger(Logger::INFO, "Read %d",$this_blocksize);
@@ -65,7 +65,7 @@ while ($this_blocksize = read(STDIN,$block,$max_blocksize)) {
     # Flush the obj
     #
     $objref->complete_obj;
-    $objref = S3ObjWrapper->new($bucket,($skip >= $c),$template,$c++);
+    $objref = S3ObjWrapper->new($bucket,($skip > $c),$template,$c++);
   }
 }
 $objref->complete_obj;
