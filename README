@@ -1,8 +1,8 @@
 Takes a stream of data from STDIN (e.g. a ZFS replication stream from
 'zfs send'), splits it into chunks and uploads each chunk to an S3 bucket
-object (essentially a file). The S3 objects may be much larger than
-available memory as each S3 object is in turn uploaded in smaller chunks of
-an S3 multipart upload.
+object (essentially a file in S3). The S3 objects may be much larger than
+available memory as each S3 object is itself in turn uploaded in smaller
+chunks using the S3 multipart upload.
 
 Eg:
 
@@ -22,7 +22,7 @@ how many objects worth of data to skip before the uploads are resumed.
 
 $ zfs send -R mysnapshot@dataset | ./s3-upload-stream.pl --bucket zfs-backup
 
-...some kind of incident disrupts the upload after 100 objects uploaded...
+...some kind of incident disrupts the upload after 100 objects successfully uploaded...
 
 $ zfs send -R mysnapshot@dataset | ./s3-upload-stream.pl --bucket zfs-backup --skip 100
 
