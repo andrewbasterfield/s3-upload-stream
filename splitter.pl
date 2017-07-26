@@ -27,7 +27,7 @@ use Getopt::Long;
 $SIG{__DIE__} = \&Carp::confess;
 $SIG{__WARN__} = \&Carp::cluck;
 
-my $max_objsize = $ENV{S3_MAX_OBJSIZE} || 67764224; # 64Mb
+my $max_objsize = $ENV{S3_MAX_OBJSIZE} || 1073741824; # 1024Mb
 my $max_blocksize = $ENV{S3_MAX_BLOCKSIZE} || 8470528; # 8Mb
 my $bucketname = $ENV{S3_BUCKETNAME};
 my $template = $ENV{S3_OBJ_NAME_TEMPLATE} || "upload.%06d";
