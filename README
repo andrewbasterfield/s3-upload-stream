@@ -29,13 +29,20 @@ $ zfs send -R mysnapshot@dataset | ./s3-upload-stream.pl --bucket zfs-backup --s
 If you set the --skip parameter too low an object will be needlessly (but
 harmlessly) overwritten. Too high and you will have a hole in your data.
 
-Usage: ./s3-upload-stream.pl [--help|-h] [--blocksize=<blocksize>] [--objsize=<objsize>] --bucketname=<bucketname> [--template=<template>] [--skip=<skip>]
+Usage: ./s3-upload-stream.pl [--help|-h] [--blocksize=<blocksize>] [--objsize=<objsize>]
+  --bucketname=<bucketname> [--template=<template>] [--skip=<skip>]
   -h  --help                  display this help content
-  -bs --blocksize <blocksize> the size of reads from STDIN and hence the size of the object parts uploaded to S3 [default 8470528] (can be set in environment with S3_MAX_BLOCKSIZE)
-  -os --objsize <objsize>     the size of the objects in S3 [default 1073741824] (can be set in environment with S3_MAX_OBJSIZE)
-  -b  --bucketname <name>     the name of the S3 bucket to upload to  (can be set in environment with S3_BUCKETNAME)
-  -t  --template <template>   filename template (format string) [default upload.%06d] (can be set in environment with S3_OBJ_NAME_TEMPLATE)
+  -bs --blocksize <blocksize> the size of reads from STDIN and hence the size of the
+                              object parts uploaded to S3 [default 8470528] (can be
+                              set in environment with S3_MAX_BLOCKSIZE)
+  -os --objsize <objsize>     the size of the objects in S3 [default 1073741824] (can
+                              be set in environment with S3_MAX_OBJSIZE)
+  -b  --bucketname <name>     the name of the S3 bucket to upload to  (can be set in
+                              environment with S3_BUCKETNAME)
+  -t  --template <template>   filename template (format string) [default upload.%06d]
+                              (can be set in environment with S3_OBJ_NAME_TEMPLATE)
   -s  --skip <N>              skip <N> objects worth of STDIN [default 0]
-  -s3 --s3host <host>         S3 regional host to upload to [default s3-eu-west-1.amazonaws.com] (can be set in environment with S3_HOST)
+  -s3 --s3host <host>         S3 regional host to upload to [default s3-eu-west-1.amazonaws.com]
+                              (can be set in environment with S3_HOST)
 Note: set AWS_ACCESS_KEY_ID and AWS_ACCESS_KEY_SECRET in the environment
 
