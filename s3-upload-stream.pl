@@ -105,18 +105,15 @@ while ($this_blocksize = read(STDIN,$block,$max_blocksize)) {
   Logger::logger(Logger::INFO, "Read %d",$this_blocksize);
   die $! if $!;
   
-  if ($objref->size() + $this_blocksize <= $max_objsize) {
-    #
-    # Append to obj
-    #
-    $objref->write_chunk($block,$this_blocksize);
-  } else {
+  if ($objref->size() + $this_blocksize > $max_objsize) {
     #
     # Flush the obj
     #
     $objref->complete_obj;
     $objref = S3ObjWrapper->new($bucket,($skip > $c),$template,$c++);
   }
+
+  $objref->write_chunk($block,$this_blocksize);
 }
 $objref->complete_obj;
 exit;
