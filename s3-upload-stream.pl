@@ -66,7 +66,7 @@ if ($help) {
 }
 
 if (!defined $max_objsize) {
-  print STDERR "--bucketname must be set\n";
+  print STDERR "--objsize must be set\n";
   usage(*STDERR);
   exit 1;
 }
