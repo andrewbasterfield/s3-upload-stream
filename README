@@ -46,3 +46,6 @@ Usage: ./s3-upload-stream.pl [--help|-h] [--blocksize=<blocksize>] [--objsize=<o
                               (can be set in environment with S3_HOST)
 Note: set AWS_ACCESS_KEY_ID and AWS_ACCESS_KEY_SECRET in the environment
 
+The data can be pulled from S3 and imported into a ZFS dataset like so (pv is optional)
+
+$ s3cmd -s get s3://zfs-backup/upload* - | pv | sudo zfs recv -F dataset
